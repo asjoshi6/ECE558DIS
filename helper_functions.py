@@ -50,3 +50,54 @@ def conv2d(f, w):
                 output_image[j, i, k] = np.sum(padded_image[j: j + kernel_height, i: i + kernel_width, k] * w)
     output_image_cropped = np.squeeze(output_image[: input_height, : input_width, :])
     return output_image_cropped
+
+
+def normalize_image(upper_limit, img):
+    return np.asarray(((img - np.min(img)) / (np.max(img) - np.min(img))) * upper_limit, np.int8)
+
+
+def maxima(logstack, k, sigma, threshold):
+    maxlocation = []
+    row, col = logstack[0].shape
+    for i in range(row):
+        for j in range(col):
+            ##annotation of box i.e neigbhourhood region
+            box = logstack[:, i:i + 2, j:j + 2]
+            extrema = np.max(box)
+            if extrema >= threshold:
+                z, x, y = np.unravel_index(box.argmax(), box.shape)
+                maxlocation.append((x + i, y + j, np.power(k, z) * sigma))
+    return maxlocation
+
+
+def dft2d_fft_based(image):
+    """
+    Implementation of DFT2D using the 1D FFT using the separable property of DFT2D
+    :param image: The image for which the DFT2D transformation needs to be computed
+    :return: The frequency domain transformed image, spectrum and corresponding phase
+    """
+    image = np.asarray(image, np.complex)
+    for i in range(image.shape[0]):
+        image[i, :] = np.fft.fft(image[i, :])
+    for i in range(image.shape[1]):
+        image[:, i] = np.fft.fft(image[:, i])
+    return image
+
+
+def idft2d_fft_based(image):
+    """
+    Implementation of IDFT2D using the 1D FFT
+    :param image: The image for which the DFT2D transformation needs to be computed
+    :return: The frequency domain transformed image, spectrum and corresponding phase
+    """
+    for i in range(image.shape[0]):
+        image[i, :] = np.array(1j, np.complex) * np.conjugate(image[i, :])
+        image[i, :] = np.fft.fft(image[i, :])
+        image[i, :] = np.array(1j, np.complex) * np.conjugate(image[i, :])
+    image /= image.shape[0]
+    for i in range(image.shape[1]):
+        image[:, i] = np.array(1j, np.complex) * np.conjugate(image[:, i])
+        image[:, i] = np.fft.fft(image[:, i])
+        image[:, i] = np.array(1j, np.complex) * np.conjugate(image[:, i])
+    image /= image.shape[1]
+    return image
