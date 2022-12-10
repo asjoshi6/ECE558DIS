@@ -7,12 +7,9 @@ Possible implementations:
 
 import cv2
 import os
-from scipy.ndimage import gaussian_laplace
 import matplotlib.pyplot as plt
 import numpy as np
-from helper_functions import conv2d, normalize_image, dft2d_fft_based, idft2d_fft_based, pad_image
-from helper_functions import maxima
-from scipy import spatial
+from helper_functions import conv2d, dft2d_fft_based, idft2d_fft_based
 
 
 def generate_log_apprximation(standard_deviation):
@@ -32,18 +29,17 @@ def generate_log_stack(img, number_of_iterations, init_sigma, k):
     for i in range(number_of_iterations):
         current_sigma = init_sigma * (k ** i)
         log_approx = generate_log_apprximation(current_sigma) * (current_sigma ** 2)
-        filtered = conv2d(img, log_approx)
-        # img_freq = dft2d_fft_based(img)
-        # if (img.shape[1] - log_approx.shape[1]) % 2 == 1:
-        #     log_approx
-        # if (img.shape[0] - log_approx.shape[0]) % 2 == 0:
-        #     pad_height = int((img.shape[0] - log_approx.shape[0]) // 2)
-        # else:
-        #     pad_height = int((img.shape[0] - log_approx.shape[0]) // 2) + 1
-        # padded_log_approx = pad_image(log_approx, pad_width, pad_height)
-        # padded_log_approx_freq = dft2d_fft_based(padded_log_approx)
-        # filtered_freq = np.multiply(padded_log_approx_freq, img_freq)
-        # filtered = idft2d_fft_based(filtered_freq)
+        # filtered = conv2d(img, log_approx)
+        padded_log_approx = np.zeros_like(img)
+        width_location = int(img.shape[0] / 2) - int((log_approx.shape[0] / 2)), int(img.shape[0] / 2) + int(np.round(log_approx.shape[0] / 2))
+        height_location = int(img.shape[1] / 2) - int((log_approx.shape[1] / 2)), int(img.shape[1] / 2) + int(np.round(log_approx.shape[1] / 2))
+        padded_log_approx[width_location[0]: width_location[1], height_location[0]: height_location[1]] = log_approx
+        padded_log_approx = np.fft.ifftshift(padded_log_approx)
+        img_freq = dft2d_fft_based(img)
+        padded_log_approx_freq = dft2d_fft_based(padded_log_approx)
+        filtered_freq = np.multiply(padded_log_approx_freq, img_freq)
+        filtered = idft2d_fft_based(filtered_freq)
+        filtered = np.abs(filtered)
         filtered = np.square(filtered)
         stacked_logs.append(filtered)
     return stacked_logs
@@ -81,48 +77,22 @@ def non_maxima_suppression(initial_maxima_mask, log_stack):
     final_maxima_locations = (local_maxima_3d == local_maximas_2d) * initial_maxima_mask
     return final_maxima_locations
 
-def NMS(scaleSpace):
-    scaleLayers = scaleSpace.shape[0]
-    iRows, iCols = scaleSpace[0].shape
-
-    """ 2-D NMS """
-    nms2D = np.zeros((scaleLayers, iRows, iCols), dtype='float32')
-
-    for i in range(scaleLayers):
-        octaveImg = scaleSpace[i, :, :]
-        [octR, octC] = octaveImg.shape
-        for j in range(octR):
-            for k in range(octC):
-                # nms2D[i, j-1, k-1] = np.amax(octaveImg[j-1:j+2 , k-1:k+2])
-                nms2D[i, j, k] = np.amax(octaveImg[j:j + 2, k:k + 2])
-
-    """ 3-D NMS """
-    nms3D = np.zeros((scaleLayers, iRows, iCols), dtype='float32')
-
-    for j in range(1, np.size(nms2D, 1) - 1):
-        for k in range(1, np.size(nms2D, 2) - 1):
-            nms3D[:, j, k] = np.amax(nms2D[:, j - 1:j + 2, k - 1:k + 2])
-
-    nms3D = np.multiply((nms3D == nms2D), nms3D)
-
-    return nms3D  # return new scale space after NMS to log_scale_space
-
 
 if __name__ == "__main__":
+    import time
     img_path = r"C:\Users\sumuk\OneDrive\Desktop\NCSU_related\Courses_and_stuff\Courses_and_stuff\NCSU_courses_and_books\ECE_558\Project03\TestImages4Project3-Option3\TestImages4Project\butterfly.jpg"
     save_folder = r"C:\Users\sumuk\OneDrive\Desktop\NCSU_related\Courses_and_stuff\Courses_and_stuff\NCSU_courses_and_books\ECE_558\Project03\delete\delete1"
     img = cv2.imread(img_path, 0)
     img_rgb = cv2.imread(img_path)
-    sigma = 1
-    number_of_iter = 12
-    threshold = 0.01
+    sigma = 1.5
+    number_of_iter = 8
+    threshold = 0.02
     K = 1.5 #np.sqrt(2)
+    start = time.time()
     stacked_logs = generate_log_stack(img, number_of_iter, sigma, K)
     for i, log in enumerate(stacked_logs):
         plt.imshow(log, cmap="gray")
         plt.savefig(os.path.join(save_folder, "scale_%d_log.png" % i))
-    # stacked_logs = non_maxima_suppression(np.asarray(stacked_logs))
-    # stacked_logs = NMS(np.asarray(stacked_logs))
     initial_keypoints_mask = find_initial_keypoints(np.asarray(stacked_logs), threshold)
     initial_keypoints_locations = np.where(initial_keypoints_mask == 1)
     for z, x, y in zip(initial_keypoints_locations[0], initial_keypoints_locations[1], initial_keypoints_locations[2]):
@@ -136,5 +106,5 @@ if __name__ == "__main__":
         radius = sigma * (K ** z)
         cv2.circle(img_rgb, (y, x), int(radius), (0, 0, 255), 1)
     cv2.imwrite(os.path.join(save_folder, "key_points.png"), img_rgb)
-    # print("")
+    print("Time taken: ", time.time() - start)
 
