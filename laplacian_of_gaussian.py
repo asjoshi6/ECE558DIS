@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from helper_functions import conv2d, normalize_image, dft2d_fft_based, idft2d_fft_based, pad_image
 from helper_functions import maxima
+from scipy import spatial
 
 
 def generate_log_apprximation(standard_deviation):
@@ -61,24 +62,79 @@ def find_initial_keypoints(log_stack, threshold):
     return maxima_mask
 
 
-if __name__ == "__main1__":
+def non_maxima_suppression(initial_maxima_mask, log_stack):
+    number_of_scales = initial_maxima_mask.shape[0]
+    local_maximas_2d = np.zeros_like(log_stack)
+    for i in range(number_of_scales):
+        maxima_locations = np.where(initial_maxima_mask[i] == 1)
+        for x_i, y_i in zip(maxima_locations[0], maxima_locations[1]):
+            local_neighborhood = log_stack[i, max(0, x_i - 1): x_i + 2, max(y_i - 1, 0): y_i + 2]
+            local_maximas_2d[i, x_i, y_i] = np.max(local_neighborhood)
+
+    local_maxima_3d = np.zeros_like(log_stack)
+    for i in range(1, number_of_scales - 1):
+        maxima_locations = np.where(initial_maxima_mask[i] == 1)
+        for x_i, y_i in zip(maxima_locations[0], maxima_locations[1]):
+            local_neighborhood_3d = local_maximas_2d[i - 1: i + 2, max(0, x_i - 1): x_i + 2, max(0, y_i - 1): y_i + 2]
+            local_maxima_3d[i, x_i, y_i] = np.max(local_neighborhood_3d)
+
+    final_maxima_locations = (local_maxima_3d == local_maximas_2d) * initial_maxima_mask
+    return final_maxima_locations
+
+def NMS(scaleSpace):
+    scaleLayers = scaleSpace.shape[0]
+    iRows, iCols = scaleSpace[0].shape
+
+    """ 2-D NMS """
+    nms2D = np.zeros((scaleLayers, iRows, iCols), dtype='float32')
+
+    for i in range(scaleLayers):
+        octaveImg = scaleSpace[i, :, :]
+        [octR, octC] = octaveImg.shape
+        for j in range(octR):
+            for k in range(octC):
+                # nms2D[i, j-1, k-1] = np.amax(octaveImg[j-1:j+2 , k-1:k+2])
+                nms2D[i, j, k] = np.amax(octaveImg[j:j + 2, k:k + 2])
+
+    """ 3-D NMS """
+    nms3D = np.zeros((scaleLayers, iRows, iCols), dtype='float32')
+
+    for j in range(1, np.size(nms2D, 1) - 1):
+        for k in range(1, np.size(nms2D, 2) - 1):
+            nms3D[:, j, k] = np.amax(nms2D[:, j - 1:j + 2, k - 1:k + 2])
+
+    nms3D = np.multiply((nms3D == nms2D), nms3D)
+
+    return nms3D  # return new scale space after NMS to log_scale_space
+
+
+if __name__ == "__main__":
     img_path = r"C:\Users\sumuk\OneDrive\Desktop\NCSU_related\Courses_and_stuff\Courses_and_stuff\NCSU_courses_and_books\ECE_558\Project03\TestImages4Project3-Option3\TestImages4Project\butterfly.jpg"
     save_folder = r"C:\Users\sumuk\OneDrive\Desktop\NCSU_related\Courses_and_stuff\Courses_and_stuff\NCSU_courses_and_books\ECE_558\Project03\delete\delete1"
     img = cv2.imread(img_path, 0)
     img_rgb = cv2.imread(img_path)
-    sigma = 2
-    number_of_iter = 8
-    threshold = 0.09
-    K = np.sqrt(2)
+    sigma = 1
+    number_of_iter = 12
+    threshold = 0.01
+    K = 1.5 #np.sqrt(2)
     stacked_logs = generate_log_stack(img, number_of_iter, sigma, K)
     for i, log in enumerate(stacked_logs):
         plt.imshow(log, cmap="gray")
         plt.savefig(os.path.join(save_folder, "scale_%d_log.png" % i))
-    initial_keypoints = find_initial_keypoints(np.asarray(stacked_logs), threshold)
-    maxima_locations = np.where(initial_keypoints == 1)
+    # stacked_logs = non_maxima_suppression(np.asarray(stacked_logs))
+    # stacked_logs = NMS(np.asarray(stacked_logs))
+    initial_keypoints_mask = find_initial_keypoints(np.asarray(stacked_logs), threshold)
+    initial_keypoints_locations = np.where(initial_keypoints_mask == 1)
+    for z, x, y in zip(initial_keypoints_locations[0], initial_keypoints_locations[1], initial_keypoints_locations[2]):
+        radius = sigma * (K ** z)
+        cv2.circle(img_rgb, (y, x), int(radius), (0, 0, 255), 1)
+    cv2.imwrite(os.path.join(save_folder, "key_points_initial.png"), img_rgb)
+    img_rgb = cv2.imread(img_path)
+    filtered_keypoints = non_maxima_suppression(initial_keypoints_mask, np.asarray(stacked_logs))
+    maxima_locations = np.where(filtered_keypoints == 1)
     for z, x, y in zip(maxima_locations[0], maxima_locations[1], maxima_locations[2]):
         radius = sigma * (K ** z)
         cv2.circle(img_rgb, (y, x), int(radius), (0, 0, 255), 1)
     cv2.imwrite(os.path.join(save_folder, "key_points.png"), img_rgb)
-    print("")
+    # print("")
 
