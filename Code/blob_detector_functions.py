@@ -1,38 +1,54 @@
 """
-Possible implementations:
+Possible implementations: Compare correctness and speed
 1) Convolve image with Gaussian, then take the difference of Gaussian - Approximation to LoG
 2) Direct scipy implementation
 3) Opencv implementation -> Blur first, then laplacian
+4) Directly compute DoG from formula
 """
 
-import cv2
-import os
-import matplotlib.pyplot as plt
 import numpy as np
-from helper_functions import dft2d_fft_based, idft2d_fft_based
+from helper_functions import dft2d_fft_based, idft2d_fft_based, pad_kernel
 
 
 def generate_log_apprximation(standard_deviation):
+    """
+    Computes the approximation of Laplacian of Gaussian using Difference of Gaussian given the standard deviation
+    for the Gaussian kernel
+    :param standard_deviation: The standard deviation for the Gaussian kernel/filter which is to be used for computed
+                               the Difference of Gaussian
+           type: float
+    :return: 2D Laplacian of Gaussian kernel
+    """
     # kernel_size = (standard_deviation * 4) + 1
     kernel_size = np.ceil(standard_deviation * 6)
     location_values = np.arange(int(-kernel_size//2), int(kernel_size//2 + 1))
     gaussian_1d = np.exp(-(location_values ** 2)/(2 * (standard_deviation ** 2)))
-    log2d = (-1/(np.pi * (standard_deviation ** 4))) * (1 - (((location_values[np.newaxis, :] ** 2) +
-             location_values[:, np.newaxis] ** 2)/(2 * (standard_deviation ** 2)))) *\
+    log2d = (-1/(np.pi * (standard_deviation ** 4))) * (1 - (((location_values[np.newaxis, :] ** 2)
+             + location_values[:, np.newaxis] ** 2)/(2 * (standard_deviation ** 2)))) *\
              (gaussian_1d[np.newaxis, :] * gaussian_1d[:, np.newaxis])
     return log2d
 
 
 def generate_log_stack(img, number_of_iterations, init_sigma, k):
+    """
+    Computes the scale space/LoG stack for the given image
+    :param img: The image for which the LoG stack needs to be computed
+          type: ndarray
+    :param number_of_iterations: The number of levels in the LoG space
+           type: int
+    :param init_sigma: The standard deviation for the first level of the LoG
+           type: float
+    :param k: The factor by which the standard deviation is scaled in consequent levels in LoG scale space
+              (sigma, k*sigma, k^2*(sigma), ..)
+           type: float
+    :return: Stack of LoG
+    """
     stacked_logs = []
     img = img / 255
     for i in range(number_of_iterations):
         current_sigma = init_sigma * (k ** i)
         log_approx = generate_log_apprximation(current_sigma) * (current_sigma ** 2)
-        padded_log_approx = np.zeros_like(img)
-        width_location = int(img.shape[0] / 2) - int((log_approx.shape[0] / 2)), int(img.shape[0] / 2) + int(np.round(log_approx.shape[0] / 2))
-        height_location = int(img.shape[1] / 2) - int((log_approx.shape[1] / 2)), int(img.shape[1] / 2) + int(np.round(log_approx.shape[1] / 2))
-        padded_log_approx[width_location[0]: width_location[1], height_location[0]: height_location[1]] = log_approx
+        padded_log_approx = pad_kernel(log_approx, img.shape)
         padded_log_approx = np.fft.ifftshift(padded_log_approx)
         img_freq = dft2d_fft_based(img)
         padded_log_approx_freq = dft2d_fft_based(padded_log_approx)
@@ -45,6 +61,15 @@ def generate_log_stack(img, number_of_iterations, init_sigma, k):
 
 
 def find_initial_keypoints(log_stack, threshold):
+    """
+    Computes the initial key points from the stacked LoG by comparing each value with its 3D neighborhood,
+    picking the maximum value and checking if its value is greater than the given threshold
+    :param log_stack: The stack of LoG responses of the image
+           type: ndarray
+    :param threshold: The threshold used for selecting maximas in the LoG
+           type: float
+    :return: A binary mask with the detected keypoints/maximas being 1
+    """
     number_of_logs, height, width = log_stack.shape
     maxima_mask = np.zeros_like(log_stack)
     for i in range(1, number_of_logs - 1):
@@ -58,6 +83,15 @@ def find_initial_keypoints(log_stack, threshold):
 
 
 def non_maxima_suppression(initial_maxima_mask, log_stack):
+    """
+    Performs Non Maxima suppression in 2D neighbourhood of each maxima and then in the 3D neighborhood of each maxima
+    and maintains only the key points which are a maxima in both the 2D and 3D neighborhoods
+    :param initial_maxima_mask: A binary mask indicating the initially computed maxima values
+           type: ndarray
+    :param log_stack: Stack of the LoG responses
+           type: ndarray
+    :return: A binary mask indicating the filtered key points/maximas
+    """
     number_of_scales = initial_maxima_mask.shape[0]
     local_maximas_2d = np.zeros_like(log_stack)
     for i in range(number_of_scales):

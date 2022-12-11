@@ -7,6 +7,31 @@ from blob_detector_functions import generate_log_stack, find_initial_keypoints, 
 
 
 def run_blob_detection(img_path, sigma=1.5, save_folder=None, number_of_iterations=8, threshold=0.02, k=1.5, viz=True):
+    """
+    Detects blobs for the image sorted at img_path with respect to the other parameters provided
+    :param img_path: The path to the image for which the blob detection needs to be performed
+           type: str
+    :param sigma: The standard deviation for the first level in the scale space
+           type: str
+           default: 1.5
+    :param save_folder: The path to the folder where the resulting visualizations need to be saved
+           type: str
+           default: None
+    :param number_of_iterations: The number of scales/levels of the laplacian of Gaussian space
+           type: int
+           default: 8
+    :param threshold: The threshold used to select the maxima values from the LoG response in a neighborhood fashion
+           type: float
+           default: 0.02
+    :param k: The factor by which the standard deviation is scaled in consequent levels in LoG scale space
+              (sigma, k*sigma, k^2*(sigma), ..)
+           type: float
+           default: 1.5
+    :param viz: If the results need to be visualized from the LoG scale space, maxima detection and non maxima
+                suppressed steps.
+           type: bool
+           default: True
+    """
     img = cv2.imread(img_path, 0)
     stacked_logs = generate_log_stack(img, number_of_iterations, sigma, k)
     if viz:
@@ -31,14 +56,44 @@ def run_blob_detection(img_path, sigma=1.5, save_folder=None, number_of_iteratio
         cv2.imwrite(os.path.join(save_folder, "key_points.png"), img_rgb)
 
 
-if __name__ == "__main__":
-    image_path = "../test_images/butterfly.jpg"
+if __name__ == "__main1__":
+    """
+    Runtime Analysis
+    """
+    image_folder = "../test_images/"
+    image_paths = list(os.listdir(image_folder))
     save_folder_path = "../results"
-    sigma_val = 1.5
+    sigma_val = [2, 1, 2, 2]
+    number_of_iter = [8, 8, 8, 8]
+    maxima_threshold = [0.015, 0.02, 0.02, 0.025]
+    K = 1.5
+    visualize_results = True
+    total_time = 0
+    for i, image_path in enumerate(image_paths):
+        image_name = image_path.split(".")[0]
+        save_folder_path_i = os.path.join(save_folder_path, image_name)
+        if not os.path.exists(save_folder_path_i):
+            os.mkdir(save_folder_path_i)
+        start = time.time()
+        run_blob_detection(os.path.join(image_folder, image_path), sigma_val[i], save_folder_path_i, number_of_iter[i],
+                           maxima_threshold[i], K, visualize_results)
+        total_time += (time.time() - start)
+    print("Time taken for blob detection: ", total_time / len(image_paths))
+
+
+if __name__ == "__main2__":
+    """
+    Blob detection for single image
+    """
+    image_path = "../test_images/butterfly.jpg"
+    save_folder_path = "../results/butterfly"
+    sigma_val = 2
     number_of_iter = 8
-    maxima_threshold = 0.02
+    maxima_threshold = 0.01
     K = 1.5
     visualize_results = True
     start = time.time()
-    run_blob_detection(image_path, sigma_val, save_folder_path, number_of_iter, maxima_threshold, K, visualize_results)
-    print("Time taken for blob detection: ", time.time() - start)
+    run_blob_detection(image_path, sigma_val, save_folder_path, number_of_iter,
+                       maxima_threshold, K, visualize_results)
+    print("Time taken for blob detection: ", (time.time() - start))
+
