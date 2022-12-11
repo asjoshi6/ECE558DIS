@@ -87,6 +87,8 @@ if __name__ == "__main2__":
     """
     image_path = "../test_images/butterfly.jpg"
     save_folder_path = "../results/butterfly"
+    if not os.path.exists(save_folder_path):
+        os.mkdir(save_folder_path)
     sigma_val = 2
     number_of_iter = 8
     maxima_threshold = 0.01
