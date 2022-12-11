@@ -46,9 +46,9 @@ def pad_kernel(kernel, target_size):
     :return: Padded kernel (ndarray)
     """
     padded_kernel = np.zeros(target_size)
-    x_position_1 = int((padded_kernel.shape[0] - kernel.shape[0]) / 2)
-    x_position_2 = int((padded_kernel.shape[0] + kernel.shape[0]) / 2)
-    y_position_1 = int((padded_kernel.shape[1] - kernel.shape[0]) / 2)
-    y_position_2 = int((padded_kernel.shape[1] + kernel.shape[0]) / 2)
+    x_position_1 = int(max(0, int((padded_kernel.shape[0] - kernel.shape[0]) / 2)))
+    x_position_2 = int(min(target_size[0], ((padded_kernel.shape[0] + kernel.shape[0]) / 2)))
+    y_position_1 = int(max(0, int((padded_kernel.shape[1] - kernel.shape[0]) / 2)))
+    y_position_2 = int(min(target_size[1], ((padded_kernel.shape[1] + kernel.shape[0]) / 2)))
     padded_kernel[x_position_1 : x_position_2, y_position_1: y_position_2] = kernel
     return padded_kernel
